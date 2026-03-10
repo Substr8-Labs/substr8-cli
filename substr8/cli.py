@@ -10,11 +10,13 @@ Usage:
 import click
 from rich.console import Console
 
+from substr8 import __version__
+
 console = Console()
 
 
 @click.group()
-@click.version_option(version="1.7.1", prog_name="substr8")
+@click.version_option(version=__version__, prog_name="substr8")
 def main():
     """Substr8 Platform CLI - Verifiable AI Infrastructure"""
     pass
@@ -292,7 +294,7 @@ def info():
     console.print()
     
     # Version & system
-    console.print(f"[dim]v0.9.0 • Python {platform.python_version()} • {platform.system()} {platform.machine()}[/dim]")
+    console.print(f"[dim]v{__version__} • Python {platform.python_version()} • {platform.system()} {platform.machine()}[/dim]")
     console.print()
 
 
