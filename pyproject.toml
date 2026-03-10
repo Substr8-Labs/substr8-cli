@@ -1,6 +1,6 @@
 [project]
 name = "substr8"
-version = "1.6.0"
+version = "1.7.0"
 description = "Substr8 Platform CLI - Verifiable AI Infrastructure"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -19,6 +19,7 @@ classifiers = [
 ]
 
 dependencies = [
+    "substr8-core>=0.2.0",
     "click>=8.0",
     "rich>=13.0",
     "gitpython>=3.1.0",
