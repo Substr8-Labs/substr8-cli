@@ -259,6 +259,176 @@ def read(workspace: str, filename: str):
 
 
 @main.command()
+@click.argument("workspace", default=".")
+def validate(workspace: str):
+    """Validate an agent workspace has required files.
+    
+    Example: substr8 fdaa validate my-agent
+    """
+    import hashlib
+    
+    workspace_path = Path(workspace)
+    
+    if not workspace_path.exists():
+        console.print(f"[red]Error:[/red] Workspace '{workspace}' not found")
+        sys.exit(1)
+    
+    required_files = ["IDENTITY.md", "SOUL.md"]
+    optional_files = ["TOOLS.md", "MODEL.md", "POLICY.md", "MEMORY.md", "agent.toml"]
+    
+    console.print(f"\n[bold]Validating workspace:[/bold] {workspace_path}\n")
+    
+    errors = []
+    
+    # Check required files
+    for filename in required_files:
+        filepath = workspace_path / filename
+        if filepath.exists():
+            console.print(f"  [green]✓[/green] {filename}")
+        else:
+            console.print(f"  [red]✗[/red] {filename} [dim](required)[/dim]")
+            errors.append(f"Missing required file: {filename}")
+    
+    # Check optional files
+    for filename in optional_files:
+        filepath = workspace_path / filename
+        if filepath.exists():
+            console.print(f"  [green]✓[/green] {filename} [dim](optional)[/dim]")
+        else:
+            console.print(f"  [dim]○[/dim] {filename} [dim](optional, not present)[/dim]")
+    
+    if errors:
+        console.print(f"\n[red]Validation failed:[/red]")
+        for error in errors:
+            console.print(f"  • {error}")
+        sys.exit(1)
+    
+    # Compute identity hash
+    identity_content = (workspace_path / "IDENTITY.md").read_text()
+    soul_content = (workspace_path / "SOUL.md").read_text()
+    combined = f"{identity_content}\n---\n{soul_content}"
+    identity_hash = hashlib.sha256(combined.encode()).hexdigest()[:16]
+    
+    console.print(f"\n[green]✓ Validation passed[/green]")
+    console.print(f"  Identity hash: [cyan]{identity_hash}[/cyan]")
+
+
+@main.command()
+@click.argument("workspace", default=".")
+@click.option("--url", "-u", envvar="TOWERHQ_URL", default="https://towerhq.io", help="TowerHQ URL")
+@click.option("--token", "-t", envvar="SUBSTR8_TOKEN", default=None, help="API token")
+@click.option("--dry-run", is_flag=True, help="Validate only, don't push")
+def push(workspace: str, url: str, token: str, dry_run: bool):
+    """Push agent to TowerHQ.
+    
+    Example: substr8 fdaa push my-agent --url https://towerhq.io --token xxx
+    
+    Environment variables:
+      TOWERHQ_URL: TowerHQ URL (default: https://towerhq.io)
+      SUBSTR8_TOKEN: API token
+    """
+    import hashlib
+    import json
+    import re
+    
+    try:
+        import requests
+    except ImportError:
+        console.print("[red]Error:[/red] requests library required. Run: pip install requests")
+        sys.exit(1)
+    
+    workspace_path = Path(workspace)
+    
+    if not workspace_path.exists():
+        console.print(f"[red]Error:[/red] Workspace '{workspace}' not found")
+        sys.exit(1)
+    
+    # Validate first
+    required_files = ["IDENTITY.md", "SOUL.md"]
+    for filename in required_files:
+        if not (workspace_path / filename).exists():
+            console.print(f"[red]Error:[/red] Missing required file: {filename}")
+            console.print("Run [cyan]substr8 fdaa validate[/cyan] to check workspace")
+            sys.exit(1)
+    
+    # Read files
+    identity_content = (workspace_path / "IDENTITY.md").read_text()
+    soul_content = (workspace_path / "SOUL.md").read_text()
+    
+    tools_content = None
+    tools_path = workspace_path / "TOOLS.md"
+    if tools_path.exists():
+        tools_content = tools_path.read_text()
+    
+    # Parse identity
+    name_match = re.search(r'\*\*Name:\*\*\s*(.+)', identity_content)
+    name = name_match.group(1).strip() if name_match else workspace_path.name
+    
+    slug_match = re.search(r'\*\*Slug:\*\*\s*(.+)', identity_content)
+    slug = slug_match.group(1).strip() if slug_match else name.lower().replace(" ", "-")
+    
+    # Compute identity hash
+    combined = f"{identity_content}\n---\n{soul_content}"
+    identity_hash = hashlib.sha256(combined.encode()).hexdigest()
+    
+    console.print(f"\n[bold]Pushing agent to TowerHQ[/bold]\n")
+    console.print(f"  Name: [cyan]{name}[/cyan]")
+    console.print(f"  Slug: [cyan]{slug}[/cyan]")
+    console.print(f"  Identity hash: [dim]{identity_hash[:16]}...[/dim]")
+    console.print(f"  Target: [cyan]{url}[/cyan]")
+    
+    if dry_run:
+        console.print(f"\n[yellow]Dry run - not pushing[/yellow]")
+        sys.exit(0)
+    
+    if not token:
+        console.print(f"\n[red]Error:[/red] API token required")
+        console.print("Set SUBSTR8_TOKEN environment variable or use --token")
+        sys.exit(1)
+    
+    # Prepare payload
+    payload = {
+        "name": name,
+        "slug": slug,
+        "identity": identity_content,
+        "soul": soul_content,
+        "tools": tools_content,
+        "identityHash": identity_hash,
+    }
+    
+    # Push to TowerHQ
+    try:
+        response = requests.post(
+            f"{url.rstrip('/')}/api/agents/import",
+            json=payload,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Content-Type": "application/json",
+            },
+            timeout=30,
+        )
+        
+        if response.status_code == 201:
+            data = response.json()
+            agent_id = data.get("id", "unknown")
+            console.print(f"\n[green]✓ Agent pushed successfully[/green]")
+            console.print(f"  Agent ID: [cyan]{agent_id}[/cyan]")
+            console.print(f"  View at: [cyan]{url}/agents/{agent_id}[/cyan]")
+        elif response.status_code == 409:
+            console.print(f"\n[yellow]Agent already exists[/yellow]")
+            console.print("Use --force to update (not yet implemented)")
+            sys.exit(1)
+        else:
+            console.print(f"\n[red]Error:[/red] Push failed ({response.status_code})")
+            console.print(response.text)
+            sys.exit(1)
+            
+    except requests.exceptions.RequestException as e:
+        console.print(f"\n[red]Error:[/red] Connection failed: {e}")
+        sys.exit(1)
+
+
+@main.command()
 @click.argument("skill_path")
 @click.option("--model", "-m", default=None, help="Model for analysis (auto-detected)")
 @click.option("--provider", "-p", default=None, type=click.Choice(["anthropic", "openai"]), help="LLM provider")
