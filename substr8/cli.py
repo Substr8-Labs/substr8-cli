@@ -244,14 +244,18 @@ def init(path: str, framework: str, api_key: str, minimal: bool):
 
 
 # === RunProof Commands (Top-level) ===
+# Re-export from the runproof group for backward compatibility
 
-from substr8.runproof.cli import run as runproof_run, verify as runproof_verify, export as runproof_export, badge as runproof_badge
+from substr8.runproof.cli import runproof as _runproof_group
 
-# Register top-level commands
-main.add_command(runproof_run, name="run")
-main.add_command(runproof_verify, name="verify")
-main.add_command(runproof_export, name="export")
-main.add_command(runproof_badge, name="badge")
+# Register the runproof service group
+main.add_command(_runproof_group, name="runproof")
+
+# Also register key bundle commands as top-level shortcuts
+main.add_command(_runproof_group.commands['run'], name="run")
+main.add_command(_runproof_group.commands['verify'], name="verify")
+main.add_command(_runproof_group.commands['export'], name="export")
+main.add_command(_runproof_group.commands['badge'], name="badge")
 
 
 # === Info Commands ===
@@ -511,13 +515,6 @@ main.add_command(threadhq_main, name="threadhq")
 from substr8.spechq.cli import spechq as spechq_main
 
 main.add_command(spechq_main, name="spechq")
-
-
-# === RunProof (Proof service) ===
-
-from substr8.runproof.cli import runproof as runproof_main
-
-main.add_command(runproof_main, name="runproof")
 
 
 # === Platform (Docker Compose orchestration) ===
