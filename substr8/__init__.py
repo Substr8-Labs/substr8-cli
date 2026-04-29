@@ -21,7 +21,7 @@ Usage:
     agent = govern(my_agent)
 """
 
-__version__ = "1.10.0"
+__version__ = "1.10.1"
 
 # High-level API
 from .governance import (
