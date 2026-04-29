@@ -506,6 +506,20 @@ from substr8.threadhq.cli import threadhq as threadhq_main
 main.add_command(threadhq_main, name="threadhq")
 
 
+# === SpecHQ (Spec capture and harness compilation) ===
+
+from substr8.spechq.cli import spechq as spechq_main
+
+main.add_command(spechq_main, name="spechq")
+
+
+# === RunProof (Proof service) ===
+
+from substr8.runproof.cli import runproof as runproof_main
+
+main.add_command(runproof_main, name="runproof")
+
+
 # === Platform (Docker Compose orchestration) ===
 
 from substr8.platform_v2.group import platform as platform_group
