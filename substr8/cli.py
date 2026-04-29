@@ -514,5 +514,32 @@ from substr8.platform_v2.cli import platform_v2 as platform_v2_main
 main.add_command(platform_v2_main, name="platform-v2")
 
 
+# === Top-Level Platform Shortcuts ===
+# These delegate to the substr8-platform Makefile.
+# New users should reach for these first.
+
+from substr8.platform_v2.cli import (
+    doctor as _doctor,
+    bootstrap as _bootstrap,
+    up as _up,
+    down as _down,
+    restart as _restart,
+    smoke as _smoke,
+    test_cmd as _test,
+    demo as _demo,
+    clean as _clean,
+)
+
+main.add_command(_doctor, name="doctor")
+main.add_command(_bootstrap, name="bootstrap")
+main.add_command(_up, name="up")
+main.add_command(_down, name="down")
+main.add_command(_restart, name="restart")
+main.add_command(_smoke, name="smoke")
+main.add_command(_test, name="test")
+main.add_command(_demo, name="demo")
+main.add_command(_clean, name="clean")
+
+
 if __name__ == "__main__":
     main()

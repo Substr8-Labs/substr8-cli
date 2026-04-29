@@ -1,7 +1,18 @@
 """
-Substr8 Platform v2 CLI — Docker Compose orchestration matching substr8-platform.
+Substr8 Platform Shortcuts — Top-level commands that delegate to substr8-platform Makefile.
 
-Delegates to Makefile and scripts in the substr8-platform repo.
+These are the most common operations every operator needs:
+    substr8 doctor     → make doctor
+    substr8 bootstrap  → make bootstrap
+    substr8 up         → make up
+    substr8 down       → make down
+    substr8 restart    → make restart
+    substr8 smoke      → make smoke
+    substr8 test       → make test
+    substr8 demo       → make demo
+    substr8 clean      → make clean
+
+The CLI does NOT reimplement any logic. It delegates entirely to the Makefile.
 """
 
 import os
@@ -10,113 +21,106 @@ import sys
 
 import click
 from rich.console import Console
-from rich.table import Table
-from rich import box
+from rich.panel import Panel
 
 console = Console()
 
-# Default platform root (can be overridden via env var)
-PLATFORM_ROOT = os.environ.get(
-    "SUBSTR8_PLATFORM_ROOT",
-    os.path.expanduser("~/workspace/substr8-platform")
-)
+# Default platform root
+DEFAULT_PLATFORM_ROOT = os.path.join(os.path.expanduser("~"), "workspace", "substr8-platform")
 
 
-def _run_make(command: str, args: list = None) -> int:
-    """Run a make command in the platform directory."""
-    if not os.path.exists(os.path.join(PLATFORM_ROOT, "Makefile")):
-        console.print(f"[red]Error:[/red] substr8-platform not found at {PLATFORM_ROOT}")
-        console.print(f"[dim]Set SUBSTR8_PLATFORM_ROOT or clone https://github.com/Substr8-Labs/substr8-platform[/dim]")
-        console.print(f"[dim]Then run: cd {PLATFORM_ROOT} && make bootstrap[/dim]")
-        return 1
-    
-    cmd = ["make", "-C", PLATFORM_ROOT, command] + (args or [])
+def _resolve_platform_root(root: str | None) -> str:
+    """Resolve the substr8-platform directory."""
+    platform_root = root or os.environ.get("SUBSTR8_PLATFORM_ROOT") or DEFAULT_PLATFORM_ROOT
+
+    if not os.path.isdir(platform_root):
+        console.print(f"[red]Error:[/red] substr8-platform not found at {platform_root}")
+        console.print()
+        console.print("Set [cyan]SUBSTR8_PLATFORM_ROOT[/cyan] or use [cyan]--root PATH[/cyan]")
+        console.print(f"Or clone: [dim]gh repo clone Substr8-Labs/substr8-platform {platform_root}[/dim]")
+        sys.exit(2)
+
+    makefile = os.path.join(platform_root, "Makefile")
+    if not os.path.isfile(makefile):
+        console.print(f"[red]Error:[/red] No Makefile found at {platform_root}")
+        console.print("Is this a valid substr8-platform directory?")
+        sys.exit(2)
+
+    return platform_root
+
+
+def _run_make(platform_root: str, target: str, extra_args: list[str] | None = None,
+              dry_run: bool = False, verbose: bool = False) -> int:
+    """Run a make target in the platform directory."""
+    cmd = ["make", "-C", platform_root, target]
+    if extra_args:
+        cmd.extend(extra_args)
+
+    if dry_run:
+        console.print(f"[dim]$ {' '.join(cmd)}[/dim]")
+        return 0
+
+    if verbose:
+        console.print(f"[dim]Running: {' '.join(cmd)}[/dim]")
+
     result = subprocess.run(cmd)
     return result.returncode
 
 
-@click.group(name="platform-v2")
-def platform_v2():
-    """Platform v2 — Docker Compose orchestration (substr8-platform).
-    
-    Manages the Substr8 dev environment using Docker Compose profiles.
-    Requires the substr8-platform repo cloned locally.
-    
-    Example:
-        substr8 platform-v2 doctor
-        substr8 platform-v2 up
-        substr8 platform-v2 smoke
-    """
-    pass
+def _make_command(target: str, help_text: str):
+    """Factory to create a click command that wraps a make target."""
+    @click.command(name=target, help=help_text)
+    @click.option("--root", type=click.Path(), help="Path to substr8-platform directory")
+    @click.option("--dry-run", is_flag=True, help="Print command without executing")
+    @click.option("--verbose", "-v", is_flag=True, help="Show command being run")
+    def cmd(root, dry_run, verbose):
+        platform_root = _resolve_platform_root(root)
+        code = _run_make(platform_root, target, dry_run=dry_run, verbose=verbose)
+        sys.exit(code)
+    return cmd
 
 
-@platform_v2.command()
-def doctor():
-    """Check dev environment prerequisites.
-    
-    Runs the same checks as 'make doctor' in substr8-platform.
-    """
-    sys.exit(_run_make("doctor"))
+# --- Top-level shortcut commands ---
+
+doctor = _make_command("doctor", "Check dev environment prerequisites.")
+bootstrap = _make_command("bootstrap", "First-time setup (env, deps, venvs).")
+down = _make_command("down", "Stop all services.")
+restart = _make_command("restart", "Restart core services.")
+smoke = _make_command("smoke", "Platform health check.")
+test_cmd = _make_command("test", "Run all tests.")
+demo = _make_command("demo", "Seed NDIS demo data.")
+clean = _make_command("clean", "Remove all containers, volumes, images, and data.")
 
 
-@platform_v2.command()
-def bootstrap():
-    """First-time setup (env, deps, venvs).
-    
-    Runs the same setup as 'make bootstrap' in substr8-platform.
-    """
-    sys.exit(_run_make("bootstrap"))
-
-
-@platform_v2.command()
-@click.option("--profile", default="core", help="Compose profile (core, proof, memory, full)")
-def up(profile: str):
+@click.command(help="Start core services (Neo4j + ThreadHQ).")
+@click.option("--root", type=click.Path(), help="Path to substr8-platform directory")
+@click.option("--profile", type=click.Choice(["core", "proof", "memory", "runtime", "full", "demo"]),
+              default=None, help="Compose profile to start")
+@click.option("--dry-run", is_flag=True, help="Print command without executing")
+@click.option("--verbose", "-v", is_flag=True, help="Show command being run")
+def up(root, profile, dry_run, verbose):
     """Start platform services.
-    
-    Defaults to 'core' profile (Neo4j + ThreadHQ).
+
+    Defaults to core profile (Neo4j + ThreadHQ).
+    Use --profile for additional service groups.
+
+    Examples:
+        substr8 up
+        substr8 up --profile memory
+        substr8 up --profile full
     """
-    if profile == "core":
-        sys.exit(_run_make("up"))
+    platform_root = _resolve_platform_root(root)
+
+    if profile == "full":
+        target = "up-full"
+    elif profile == "proof":
+        target = "up-proof"
+    elif profile == "memory":
+        target = "up-memory"
+    elif profile == "threadhq":
+        target = "up-threadhq"
     else:
-        # Build custom compose command
-        if not os.path.exists(os.path.join(PLATFORM_ROOT, "Makefile")):
-            console.print(f"[red]Error:[/red] substr8-platform not found at {PLATFORM_ROOT}")
-            sys.exit(1)
-        cmd = ["docker", "compose", "--profile", profile, "up", "-d"]
-        result = subprocess.run(cmd, cwd=PLATFORM_ROOT)
-        sys.exit(result.returncode)
+        target = "up"
 
-
-@platform_v2.command()
-def down():
-    """Stop all services."""
-    sys.exit(_run_make("down"))
-
-
-@platform_v2.command()
-def restart():
-    """Restart core services."""
-    sys.exit(_run_make("restart"))
-
-
-@platform_v2.command()
-def smoke():
-    """Run platform smoke test."""
-    sys.exit(_run_make("smoke"))
-
-
-@platform_v2.command()
-def ps():
-    """List running services."""
-    sys.exit(_run_make("ps"))
-
-
-@platform_v2.command()
-@click.option("--tail", default=200, help="Number of lines to show")
-def logs(tail: int):
-    """Tail service logs."""
-    sys.exit(_run_make("logs"))
-
-
-if __name__ == "__main__":
-    platform_v2()
+    code = _run_make(platform_root, target, dry_run=dry_run, verbose=verbose)
+    sys.exit(code)
