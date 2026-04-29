@@ -506,12 +506,12 @@ from substr8.threadhq.cli import threadhq as threadhq_main
 main.add_command(threadhq_main, name="threadhq")
 
 
-# === Platform v2 (Docker Compose orchestration) ===
+# === Platform (Docker Compose orchestration) ===
 
-from substr8.platform_v2.cli import platform_v2 as platform_v2_main
+from substr8.platform_v2.group import platform as platform_group
 
-# Register platform-v2 as a subcommand group
-main.add_command(platform_v2_main, name="platform-v2")
+# Register platform as a subcommand group
+main.add_command(platform_group, name="platform")
 
 
 # === Top-Level Platform Shortcuts ===
